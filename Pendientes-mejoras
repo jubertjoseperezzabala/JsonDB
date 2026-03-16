@@ -1,0 +1,30 @@
+1. Robustez y Persistencia (Capa de Infraestructura)
+
+Estas mejoras aseguran que los datos no se pierdan ni se corrompan.Escritura Atómica: Implementar el uso de archivos .tmp antes de renombrar al original para evitar que un corte de luz deje el JSON a medias.Migración a I/O Asíncrono: Cambiar los métodos Sync de fs por fs.promises. Esto evitará que el proceso de Node.js se bloquee durante escrituras pesadas, algo vital si planeas usarlo en una API.Corrección de Deprecaciones: Eliminar el uso de constructores antiguos que generan el DeprecationWarning visto en tu consola.
+
+2. Rendimiento y Memoria (Capa de Repositorio)
+
+Actualmente, el motor lee y escribe el archivo completo en cada operación. Estrategia de "Dirty Checking": Mantener los datos en memoria (dbData) y solo disparar el save() cuando realmente ha habido un cambio, o implementar un sistema de flushing programado. Índices Persistentes: Aunque ya usas Map para búsquedas rápidas en memoria, podrías guardar una versión ligera de estos índices para no tener que regenerarlos desde cero (refreshIndex) cada vez que se carga la BD.Carga Parcial (Lazy Loading): Si el archivo JSON crece mucho, cargar solo las "tablas" necesarias en lugar de todo el objeto central.
+
+3. Robustez del Intérprete(Capa SQL)
+
+El parser actual es muy ingenioso pero tiene límites físicos.Tokenizador Inteligente: Tu split(/\s+/) actual rompería una consulta como WHERE name = 'Juan Perez' porque separaría "Juan" de "Perez". Necesitamos un parser que respete las comillas.Soporte Multi-Join: Refactorizar processJoin para que pueda encadenar múltiples tablas (ej. SELECT * FROM A JOIN B JOIN C).Evaluador de Expresiones: Mejorar el WHERE para que soporte múltiples condiciones con AND / OR y el uso de paréntesis.
+
+4. Integridad y Seguridad
+
+Transacciones Simples: Implementar un mecanismo de "rollback". Si un INSERT falla por integridad referencial, asegurarnos de que no quede ningún rastro parcial en memoria.
+
+Bloqueo de Archivo (Locking): Evitar que dos instancias de FileEngine escriban en el mismo archivo al mismo tiempo, lo que causaría colisiones de datos.
+
+Resumen de Prioridades 
+
+(Roadmap Sugerido)	
+
+Prioridad	Mejora			    Beneficio Inmediato
+
+1		    Escritura Atómica	Seguridad total contra archivos corruptos.
+2		    Tokenizador Pro		Poder usar espacios en los valores de búsqueda/inserción.
+3		    /O Asíncrono		Escala mejor bajo carga (no bloquea el servidor).
+4		    ORDER BY		    Mejora drástica en la presentación de datos.
+
+

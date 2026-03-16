@@ -1,0 +1,24 @@
+{
+  "categories": [
+    {
+      "name": "Electrónica",
+      "id": 1
+    }
+  ],
+  "suppliers": [
+    {
+      "name": "TechCorp International",
+      "country": "Japón",
+      "id": 1
+    }
+  ],
+  "products": [
+    {
+      "name": "Laptop Gamer X",
+      "price": 1500,
+      "categoryId": 1,
+      "supplierId": 1,
+      "id": 1
+    }
+  ]
+}

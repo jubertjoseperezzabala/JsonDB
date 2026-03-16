@@ -1,0 +1,59 @@
+{
+  "users": [
+    {
+      "name": "Juan",
+      "role": "V.I.P",
+      "bird": "2007-05-05",
+      "phone": "0412-1134256",
+      "id": 3
+    },
+    {
+      "name": "Alfonso",
+      "role": "Guest",
+      "bird": "2011-07-05",
+      "phone": "0412-1234256",
+      "id": 4
+    }
+  ],
+  "courses": [
+    {
+      "title": "Fisica",
+      "teacherId": 2,
+      "institutionId": 1,
+      "id": 2
+    },
+    {
+      "title": "Romanos I",
+      "teacherId": 3,
+      "institutionId": 1,
+      "id": 3
+    }
+  ],
+  "school": [
+    {
+      "name": "Ingenieria",
+      "institution": "1",
+      "id": 1
+    },
+    {
+      "name": "Derecho",
+      "institution": "2",
+      "id": 2
+    },
+    {
+      "name": "Musica",
+      "institution": "3",
+      "id": 3
+    }
+  ],
+  "_relations": [
+    {
+      "childTable": "courses",
+      "childField": "teacherId",
+      "parentTable": "users",
+      "parentField": "id",
+      "action": "CASCADE",
+      "time": 1773661413368
+    }
+  ]
+}

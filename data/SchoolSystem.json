@@ -1,0 +1,17 @@
+{
+  "users": [
+    {
+      "name": "Jubert (Admin)",
+      "email": "jubert@fluxer.io",
+      "id": 1
+    }
+  ],
+  "courses": [
+    {
+      "title": "JS Master",
+      "teacherId": 1,
+      "id": 1
+    }
+  ],
+  "enrollments": []
+}
