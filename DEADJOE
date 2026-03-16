@@ -1,0 +1,12 @@
+
+*** These modified files were found in JOE when it aborted on Mon Mar 16 08:22:21 2026
+*** JOE was aborted by UNIX signal 1
+
+*** File '(Unnamed)'
+/media/jubert/Jubertssd/JsonDB/.git/MERGE_MSG
+
+*** File '* Startup Log *'
+Processing '/etc/joe/editorrc'...
+Processing '/etc/joe/ftyperc'...
+Finished processing /etc/joe/ftyperc
+Finished processing /etc/joe/editorrc
