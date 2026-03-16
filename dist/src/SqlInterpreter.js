@@ -353,9 +353,9 @@ export class SqlInterpreter {
         }
     }
     /**
-         * Procesa la inserción de registros a partir de un string JSON.
-         * @private
-         */
+     * Procesa la inserción de registros a partir de un string JSON.
+     * @private
+     */
     handleInsert(query) {
         const tableMatch = query.match(/INSERT\s+INTO\s+(\w+)/i);
         const valuesMatch = query.match(/VALUES\s+({[\s\S]*?})\s*;?$/i);
