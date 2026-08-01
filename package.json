@@ -1,10 +1,22 @@
 {
-  "name": "jsondb",
+  "name": "jsondb-fluxer",
   "version": "1.0.0",
   "type": "module",
+  "main": "./dist/JsonDB.js",
+  "types": "./dist/JsonDB.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/JsonDB.d.ts",
+      "import": "./dist/JsonDB.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "node --loader ts-node/esm --no-warnings apps/examples/SqlTest.ts",
-    "jsondb": "tsx apps/examples/SqlTest.ts"
+    "jsondb": "tsx apps/examples/SqlTest.ts",
+    "build": "tsc"
   },
   "devDependencies": {
     "@types/node": "^25.2.2",

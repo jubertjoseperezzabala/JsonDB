@@ -8,35 +8,32 @@ interface SchoolSchema {
 
 const repo = new JsonDB.JsonRepository<SchoolSchema>();
 
-try {
-    console.log("--- ⚡ JsonDB Demostracion ---");
-    
-    // 1. Inicializar BD por nombre
-    repo.createDataBase('SchoolSystem', true);
+(async () => {
+    try {
+        console.log("--- ⚡ JsonDB Demostracion ---");
+        
+        repo.createDataBase('SchoolSystem', true);
 
-    // 2. Tablas
-    repo.createTable('users');
-    repo.createTable('courses');
-    repo.createTable('enrollments');
+        await repo.createTable('users');
+        await repo.createTable('courses');
+        await repo.createTable('enrollments');
 
-    // 3. CRUD
-    repo.insert('users', { name: 'Jubert', email: 'jubert@fluxer.io' });
-    repo.update('users', 1, { name: 'Jubert (Admin)' });
-    
-    // 4. Join
-    repo.insert('courses', { title: 'JS Master', teacherId: 1 });
-    repo.insert('enrollments', { userId: 1, courseId: 1 });
+        await repo.insert('users', { name: 'Jubert', email: 'jubert@fluxer.io' });
+        await repo.update('users', 1, { name: 'Jubert (Admin)' });
+        
+        await repo.insert('courses', { title: 'JS Master', teacherId: 1 });
+        await repo.insert('enrollments', { userId: 1, courseId: 1 });
 
-    const result = repo.innerJoin('enrollments', [
-        { table: 'users', foreignKey: 'userId', as: 'alumno' }
-    ]);
+        const result = repo.innerJoin('enrollments', [
+            { table: 'users', foreignKey: 'userId', as: 'alumno' }
+        ]);
 
-    console.dir(result, { depth: null });
+        console.dir(result, { depth: null });
 
-    // 5. Delete
-    repo.deleteRecord('enrollments', 1);
+        await repo.deleteRecord('enrollments', 1);
 
-} 
-catch (e: any) {
-    console.error("❌ Error:", e.message);
-}
+    } 
+    catch (e: any) {
+        console.error("❌ Error:", e.message);
+    }
+})();

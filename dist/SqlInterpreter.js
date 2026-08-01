@@ -1,244 +1,269 @@
-import { JsonRepository } from './JsonRepository.js';
-
 /**
  * Intérprete para soportar operaciones relacionales y consultas estándar mediante Pseudo-SQL.
  * @template T - El esquema de la base de datos que define las tablas disponibles.
  */
-export class SqlInterpreter<T extends object> {
+export class SqlInterpreter {
     /** * @type {JsonRepository<T>} Instancia del repositorio para acceso a datos.
-     * @private 
+     * @private
      */
-    private repo: JsonRepository<T>;
-
+    repo;
     /**
      * @param {JsonRepository<T>} repository - Instancia del repositorio.
      */
-    constructor(repository: JsonRepository<T>) {
+    constructor(repository) {
         this.repo = repository;
     }
-
     /**
      * Ejecuta comandos SQL representados en un string y retorna los resultados.
      * @param {string} query - Consulta en formato string a procesar.
      * @returns {Promise<any>} El resultado de la operación (Array de objetos para SELECT, void para otros).
      */
-    public async execute(query: string): Promise<any> {
-        const tokens: string[] = query.trim().split(/\s+/);
-        const command: string = tokens[0].toUpperCase();
+    async execute(query) {
+        const tokens = query.trim().split(/\s+/);
+        const command = tokens[0].toUpperCase();
         if (command === 'SELECT') {
             const cachedResult = this.repo.getFromCache(query);
-            if (cachedResult) return cachedResult;
+            if (cachedResult)
+                return cachedResult;
         }
         try {
-            let result: any;
+            let result;
             switch (command) {
-                case 'DROP':    result = await this.handleDrop(tokens); break;
-                case 'CREATE':  result = await this.handleCreate(tokens); break;
-                case 'INSERT':  result = await this.handleInsert(query); break;
-                case 'SELECT':  result = await this.handleSelect(query, tokens); break;
-                case 'UPDATE':  result = await this.handleUpdate(query, tokens); break;
-                case 'DELETE':  result = await this.handleDelete(tokens); break;
-                case 'USE':     result = await this.handleUse(tokens); break;
-                case 'ALTER':   result = await this.handleAlter(query); break;
-                case 'START':   
+                case 'DROP':
+                    result = await this.handleDrop(tokens);
+                    break;
+                case 'CREATE':
+                    result = await this.handleCreate(tokens);
+                    break;
+                case 'INSERT':
+                    result = await this.handleInsert(query);
+                    break;
+                case 'SELECT':
+                    result = await this.handleSelect(query, tokens);
+                    break;
+                case 'UPDATE':
+                    result = await this.handleUpdate(query, tokens);
+                    break;
+                case 'DELETE':
+                    result = await this.handleDelete(tokens);
+                    break;
+                case 'USE':
+                    result = await this.handleUse(tokens);
+                    break;
+                case 'ALTER':
+                    result = await this.handleAlter(query);
+                    break;
+                case 'START':
                     if (tokens[1]?.toUpperCase() === 'TRANSACTION') {
                         this.repo.beginTransaction();
                         return "SUCCESS: Transaction started.";
                     }
                     break;
                 case 'COMMIT':
-                        this.repo.commit();
-                        if ((this.repo as any).clearCache) (this.repo as any).clearCache();
-                        return "SUCCESS: Transaction committed.";
-
+                    this.repo.commit();
+                    if (this.repo.clearCache)
+                        this.repo.clearCache();
+                    return "SUCCESS: Transaction committed.";
                 case 'ROLLBACK':
                     this.repo.rollback();
-                    if ((this.repo as any).clearCache) (this.repo as any).clearCache(); 
+                    if (this.repo.clearCache)
+                        this.repo.clearCache();
                     return "SUCCESS: Transaction rolled back.";
             }
             if (command === 'SELECT' && result) {
                 this.repo.addToCache(query, result);
             }
             return result;
-        } 
-        catch (error: any) {
-                throw new Error(`SQL Engine Error: ${error.message}`);
+        }
+        catch (error) {
+            throw new Error(`SQL Engine Error: ${error.message}`);
         }
     }
-
-    private async handleAlter(query: string): Promise<void> {
+    async handleAlter(query) {
         const alterRegex = /ALTER\s+TABLE\s+(\w+)\s+ADD\s+CONSTRAINT\s+\w+\s+FOREIGN\s+KEY\s*\((.*?)\)\s+REFERENCES\s+(\w+)\s*\((.*?)\)/i;
         const match = query.match(alterRegex);
-        if (!match) throw new Error("Sintaxis ALTER TABLE inválida.");
+        if (!match)
+            throw new Error("Sintaxis ALTER TABLE inválida.");
         const [, childTable, childField, parentTable, parentField] = match;
         await this.repo.addRelation({
-            childTable: childTable as keyof T,
+            childTable: childTable,
             childField: childField.trim(),
-            parentTable: parentTable as keyof T,
+            parentTable: parentTable,
             parentField: parentField.trim(),
             action: 'CASCADE'
         });
     }
-
     /**
      * Selecciona la base de datos activa.
      * @param {string[]} tokens - Tokens de la consulta.
      * @private
      */
-    private async handleUse(tokens: string[]): Promise<void> {
+    async handleUse(tokens) {
         const dbName = tokens[1];
-        if (!dbName) throw new Error("Sintaxis USE inválida.");
+        if (!dbName)
+            throw new Error("Sintaxis USE inválida.");
         await this.repo.useDatabase(dbName);
     }
-
     /**
      * Procesa el borrado o reseteo de la base de datos.
      * @param {string[]} tokens - Tokens de la consulta.
      * @private
      */
-    private async handleDrop(tokens: string[]): Promise<void> {
+    async handleDrop(tokens) {
         const target = tokens[1]?.toUpperCase();
         const dbName = tokens[2] || this.repo.getDbName();
         if (target === 'DATABASE' && dbName) {
             await this.repo.createDataBase(dbName, true);
-        } 
+        }
         else {
             throw new Error("Sintaxis DROP DATABASE inválida.");
         }
     }
-
     /**
      * Procesa la eliminación de registros con soporte para cascada.
      * @param {string[]} tokens - Tokens de la consulta.
      * @private
      */
-    private async handleDelete(tokens: string[]): Promise<void> {
+    async handleDelete(tokens) {
         const fromIndex = tokens.findIndex(t => t.toUpperCase() === 'FROM');
         const whereIndex = tokens.findIndex(t => t.toUpperCase() === 'WHERE');
         const isCascade = tokens.some(t => t.toUpperCase() === 'CASCADE');
-        if (fromIndex === -1 || whereIndex === -1) throw new Error("Sintaxis DELETE inválida.");
+        if (fromIndex === -1 || whereIndex === -1)
+            throw new Error("Sintaxis DELETE inválida.");
         const tableName = tokens[fromIndex + 1];
         const conditionStr = tokens.slice(whereIndex + 1).join('');
         const match = conditionStr.match(/id\s*=\s*([^ CASCADE]+)/i);
-        if (!match) throw new Error("DELETE requiere WHERE id = [valor]");
+        if (!match)
+            throw new Error("DELETE requiere WHERE id = [valor]");
         const idRaw = match[1].replace(/['"]/g, '').trim();
         const idValue = isNaN(Number(idRaw)) ? idRaw : Number(idRaw);
         if (isCascade) {
-            await this.repo.deleteWithCascade(tableName as keyof T, idValue);
-        } else {
-            await this.repo.deleteRecord(tableName as keyof T, idValue);
+            await this.repo.deleteWithCascade(tableName, idValue);
+        }
+        else {
+            await this.repo.deleteRecord(tableName, idValue);
         }
     }
-
     /**
      * Procesa la actualización de registros existentes.
      * @param {string} query - Consulta original para extraer el JSON.
      * @param {string[]} tokens - Tokens de la consulta.
      * @private
      */
-    private async handleUpdate(query: string, tokens: string[]): Promise<void> {
+    async handleUpdate(query, tokens) {
         const whereIndex = tokens.findIndex(t => t.toUpperCase() === 'WHERE');
-        if (whereIndex === -1) throw new Error("Sintaxis UPDATE requiere WHERE.");
+        if (whereIndex === -1)
+            throw new Error("Sintaxis UPDATE requiere WHERE.");
         const tableName = tokens[1];
         const jsonMatch = query.match(/SET\s+({[\s\S]*?})\s+WHERE/i);
-        if (!jsonMatch) throw new Error("El contenido del SET debe ser un JSON válido entre llaves {}.");
-        let updateData: any;
+        if (!jsonMatch)
+            throw new Error("El contenido del SET debe ser un JSON válido entre llaves {}.");
+        let updateData;
         try {
             updateData = JSON.parse(jsonMatch[1].trim());
-        } catch (e) {
+        }
+        catch (e) {
             throw new Error("Error al parsear el JSON del SET.");
         }
         const conditionStr = tokens.slice(whereIndex + 1).join('');
         const idMatch = conditionStr.match(/id\s*=\s*(.+)/i);
-        if (!idMatch) throw new Error("UPDATE requiere WHERE id = [valor]");
+        if (!idMatch)
+            throw new Error("UPDATE requiere WHERE id = [valor]");
         const idRaw = idMatch[1].replace(/['"]/g, '').trim();
         const idValue = isNaN(Number(idRaw)) ? idRaw : Number(idRaw);
-        await this.repo.update(tableName as keyof T, idValue, updateData);
+        await this.repo.update(tableName, idValue, updateData);
     }
-
     /**
      * Gestiona la recuperación de datos (Agregaciones, Joins o Select simple).
      * @private
      */
-    private async handleSelect(query: string, tokens: string[]): Promise<any> {
+    async handleSelect(query, tokens) {
         const queryUpper = query.toUpperCase();
-        if (queryUpper.includes('SUM(')) return this.processSum(query, tokens);
-        if (queryUpper.includes('COUNT(')) return this.processCount(query, tokens);
-        if (queryUpper.includes('AVG(')) return this.processAvg(query, tokens);
-        if (queryUpper.includes('JOIN')) return this.processJoin(query, tokens);
+        if (queryUpper.includes('SUM('))
+            return this.processSum(query, tokens);
+        if (queryUpper.includes('COUNT('))
+            return this.processCount(query, tokens);
+        if (queryUpper.includes('AVG('))
+            return this.processAvg(query, tokens);
+        if (queryUpper.includes('JOIN'))
+            return this.processJoin(query, tokens);
         return this.processSimpleSelect(query, tokens);
     }
-
     /**
      * Procesa la función de agregación AVG.
      * @private
      */
-    private async processAvg(query: string, tokens: string[]): Promise<any[]> {
+    async processAvg(query, tokens) {
         const columnMatch = tokens[1].match(/\((.*?)\)/);
-        if (!columnMatch) throw new Error("Sintaxis AVG() incorrecta.");
+        if (!columnMatch)
+            throw new Error("Sintaxis AVG() incorrecta.");
         const column = columnMatch[1].trim();
         const virtualTokens = [...tokens];
         virtualTokens[1] = '*';
-        const data = query.toUpperCase().includes('JOIN') 
-            ? this.processJoin(query, virtualTokens) 
+        const data = query.toUpperCase().includes('JOIN')
+            ? this.processJoin(query, virtualTokens)
             : this.processSimpleSelect(query, virtualTokens);
-        if (data.length === 0) return [{ "avg": 0 }];
+        if (data.length === 0)
+            return [{ "avg": 0 }];
         const total = data.reduce((acc, reg) => {
             const val = parseFloat(column.includes('.') ? column.split('.').reduce((o, i) => o?.[i], reg) : reg[column]);
             return acc + (isNaN(val) ? 0 : val);
         }, 0);
         return [{ "avg": total / data.length }];
     }
-
     /**
      * Procesa la función de agregación SUM.
      * @private
      */
-    private async processSum(query: string, tokens: string[]): Promise<any[]> {
+    async processSum(query, tokens) {
         const columnMatch = tokens[1].match(/\((.*?)\)/);
-        if (!columnMatch) throw new Error("Sintaxis SUM() incorrecta.");
+        if (!columnMatch)
+            throw new Error("Sintaxis SUM() incorrecta.");
         const column = columnMatch[1].trim();
         const virtualTokens = [...tokens];
         virtualTokens[1] = '*';
-        const data = query.toUpperCase().includes('JOIN') 
-            ? this.processJoin(query, virtualTokens) 
+        const data = query.toUpperCase().includes('JOIN')
+            ? this.processJoin(query, virtualTokens)
             : this.processSimpleSelect(query, virtualTokens);
-
         const total = data.reduce((acc, reg) => {
             const val = parseFloat(column.includes('.') ? column.split('.').reduce((o, i) => o?.[i], reg) : reg[column]);
             return acc + (isNaN(val) ? 0 : val);
         }, 0);
         return [{ "sum": total }];
     }
-
     /**
      * Procesa la función de agregación COUNT.
      * @private
      */
-    private async processCount(query: string, tokens: string[]): Promise<any> {
+    async processCount(query, tokens) {
         const virtualTokens = [...tokens];
         virtualTokens[1] = '*';
-        const data = query.toUpperCase().includes('JOIN') 
-            ? this.processJoin(query, virtualTokens) 
+        const data = query.toUpperCase().includes('JOIN')
+            ? this.processJoin(query, virtualTokens)
             : this.processSimpleSelect(query, virtualTokens);
         return [{ "count": data.length }];
     }
-
     /**
      * Evalúa condiciones complejas incluyendo paréntesis, AND, OR y NOT.
      * @private
      */
-    private evaluateConditions(item: any, conditionStr: string): boolean {
+    evaluateConditions(item, conditionStr) {
         let str = conditionStr.trim();
         if (str.startsWith('(') && str.endsWith(')')) {
             let count = 0;
             let balanced = true;
             for (let i = 0; i < str.length - 1; i++) {
-                if (str[i] === '(') count++;
-                if (str[i] === ')') count--;
-                if (count === 0 && i > 0) { balanced = false; break; }
+                if (str[i] === '(')
+                    count++;
+                if (str[i] === ')')
+                    count--;
+                if (count === 0 && i > 0) {
+                    balanced = false;
+                    break;
+                }
             }
-            if (balanced) return this.evaluateConditions(item, str.substring(1, str.length - 1).trim());
+            if (balanced)
+                return this.evaluateConditions(item, str.substring(1, str.length - 1).trim());
         }
         const orParts = this.splitOutsideParentheses(str, ' OR ');
         if (orParts.length > 1) {
@@ -252,37 +277,38 @@ export class SqlInterpreter<T extends object> {
             return !this.evaluateConditions(item, str.substring(4).trim());
         }
         const match = str.match(/([\w.]+)\s*(>=|<=|>|<|=|LIKE)\s*(.+)/i);
-        if (!match) return false;
+        if (!match)
+            return false;
         const [, field, operator, value] = match;
         const cleanValue = value.replace(/['"]/g, '').trim();
-        const itemValue = field.includes('.') 
-            ? field.split('.').reduce((o, i) => o?.[i], item) 
+        const itemValue = field.includes('.')
+            ? field.split('.').reduce((o, i) => o?.[i], item)
             : item[field];
-            
-        const compareValue: any = isNaN(Number(cleanValue)) ? cleanValue : Number(cleanValue);
+        const compareValue = isNaN(Number(cleanValue)) ? cleanValue : Number(cleanValue);
         switch (operator.toUpperCase()) {
-            case '=':    return itemValue == compareValue;
-            case '>':    return itemValue > compareValue;
-            case '<':    return itemValue < compareValue;
-            case '>=':   return itemValue >= compareValue;
-            case '<=':   return itemValue <= compareValue;
+            case '=': return itemValue == compareValue;
+            case '>': return itemValue > compareValue;
+            case '<': return itemValue < compareValue;
+            case '>=': return itemValue >= compareValue;
+            case '<=': return itemValue <= compareValue;
             case 'LIKE': return String(itemValue).toLowerCase().includes(String(cleanValue).toLowerCase());
-            default:     return false;
+            default: return false;
         }
     }
-
     /**
      * Divide una cadena por un conector (AND/OR) solo si está fuera de paréntesis.
      * @private
      */
-    private splitOutsideParentheses(str: string, separator: string): string[] {
-        const parts: string[] = [];
+    splitOutsideParentheses(str, separator) {
+        const parts = [];
         let start = 0;
         let depth = 0;
         const upperStr = str.toUpperCase();
         for (let i = 0; i < str.length; i++) {
-            if (str[i] === '(') depth++;
-            else if (str[i] === ')') depth--;
+            if (str[i] === '(')
+                depth++;
+            else if (str[i] === ')')
+                depth--;
             else if (depth === 0) {
                 if (upperStr.substring(i).startsWith(separator)) {
                     parts.push(str.substring(start, i).trim());
@@ -294,118 +320,125 @@ export class SqlInterpreter<T extends object> {
         parts.push(str.substring(start).trim());
         return parts;
     }
-
     /**
-     * permite extraer, filtrar, ordenar y proyectar los datos almacenados en una tabla específica del repositorio. Su 
+     * permite extraer, filtrar, ordenar y proyectar los datos almacenados en una tabla específica del repositorio. Su
      * trabajo es transformar una sentencia SELECT en un conjunto de resultados filtrados y limpios.
      * @private
      */
-    private processSimpleSelect(query: string, tokens: string[]): any[] {
+    processSimpleSelect(query, tokens) {
         const fromIndex = tokens.findIndex(t => t.toUpperCase() === 'FROM');
-        if (fromIndex === -1 || !tokens[fromIndex + 1]) throw new Error("Sintaxis SELECT inválida.");
+        if (fromIndex === -1 || !tokens[fromIndex + 1])
+            throw new Error("Sintaxis SELECT inválida.");
         const tableName = tokens[fromIndex + 1];
         const fieldsPart = tokens.slice(1, fromIndex).join('').replace(/\s/g, '');
-        let data = [...this.repo.findAll(tableName as keyof T)]; 
+        let data = [...this.repo.findAll(tableName)];
         const whereIndex = tokens.findIndex(t => t.toUpperCase() === 'WHERE');
         const orderIndex = tokens.findIndex(t => t.toUpperCase() === 'ORDER');
         if (whereIndex !== -1) {
             const endOfWhere = orderIndex !== -1 ? orderIndex : tokens.length;
             const conditionStr = tokens.slice(whereIndex + 1, endOfWhere).join(' ');
-            data = data.filter((item: any) => this.evaluateConditions(item, conditionStr));
+            data = data.filter((item) => this.evaluateConditions(item, conditionStr));
         }
         data = this.applyOrderBy(data, tokens);
-        if (fieldsPart === '*' || data.length === 0) return data;
+        if (fieldsPart === '*' || data.length === 0)
+            return data;
         const selectedFields = fieldsPart.split(',');
-        return data.map((record: any) => {
-            const filtered: any = {};
+        return data.map((record) => {
+            const filtered = {};
             selectedFields.forEach(f => {
                 const field = f.trim();
-                if (record[field] !== undefined) filtered[field] = record[field];
+                if (record[field] !== undefined)
+                    filtered[field] = record[field];
             });
             return filtered;
         });
     }
-
     /**
      * Ejecuta operaciones de unión INNER JOIN.
      * @private
      */
-    private processJoin(query: string, tokens: string[]): any[] {
+    processJoin(query, tokens) {
         const fromIdx = tokens.findIndex(t => t.toUpperCase() === 'FROM');
         const joinIdx = tokens.findIndex(t => t.toUpperCase() === 'INNER');
         const onIdx = tokens.findIndex(t => t.toUpperCase() === 'ON');
         const asIdx = tokens.findIndex(t => t.toUpperCase() === 'AS');
-        if (fromIdx === -1 || joinIdx === -1) throw new Error("Sintaxis JOIN incompleta.");
+        if (fromIdx === -1 || joinIdx === -1)
+            throw new Error("Sintaxis JOIN incompleta.");
         const fieldsPart = tokens.slice(1, fromIdx).join('').replace(/\s/g, '');
         const mainTable = tokens[fromIdx + 1];
         const targetTable = tokens[joinIdx + 2];
         const foreignKey = tokens[onIdx + 1];
         const alias = tokens[asIdx + 1];
-        let result = this.repo.innerJoin(mainTable as keyof T, [
-            { table: targetTable as keyof T, foreignKey, as: alias }
+        let result = this.repo.innerJoin(mainTable, [
+            { table: targetTable, foreignKey, as: alias }
         ]);
         result = this.applyOrderBy(result, tokens);
         if (fieldsPart !== '*' && fieldsPart !== '') {
             const selectedFields = fieldsPart.split(',');
             result = result.map(record => {
-                const filtered: any = {};
+                const filtered = {};
                 selectedFields.forEach(f => {
                     const field = f.trim();
                     const val = field.includes('.') ? field.split('.').reduce((o, i) => o?.[i], record) : record[field];
-                    if (val !== undefined) filtered[field] = val;
+                    if (val !== undefined)
+                        filtered[field] = val;
                 });
                 return filtered;
             });
         }
         return result;
     }
-
     /**
      * Procesa la creación de base de datos o tablas.
      * @private
      */
-    private async handleCreate(tokens: string[]): Promise<void> {
+    async handleCreate(tokens) {
         const target = tokens[1]?.toUpperCase();
         const name = tokens[2];
         if (target === 'DATABASE') {
             await this.repo.createDataBase(name, false);
-        } else if (target === 'TABLE') {
-            await this.repo.createTable(name as keyof T);
+        }
+        else if (target === 'TABLE') {
+            await this.repo.createTable(name);
         }
     }
-
     /**
      * Procesa la inserción de registros extrayendo el JSON del string original.
      * @private
      */
-    private async handleInsert(query: string): Promise<void> {
+    async handleInsert(query) {
         const tableMatch = query.match(/INSERT\s+INTO\s+(\w+)/i);
         const valuesMatch = query.match(/VALUES\s+({[\s\S]*?})\s*;?$/i);
-        if (!tableMatch || !valuesMatch) throw new Error("Sintaxis INSERT inválida.");
+        if (!tableMatch || !valuesMatch)
+            throw new Error("Sintaxis INSERT inválida.");
         const tableName = tableMatch[1];
         try {
             const jsonData = JSON.parse(valuesMatch[1].trim());
-            await this.repo.insert(tableName as keyof T, jsonData);
-        } catch (error: any) {
+            await this.repo.insert(tableName, jsonData);
+        }
+        catch (error) {
             throw new Error(`Error en el JSON de INSERT: ${error.message}`);
         }
     }
-
     /**
      * Aplica ordenamiento a los resultados.
      * @private
      */
-    private applyOrderBy(data: any[], tokens: string[]): any[] {
+    applyOrderBy(data, tokens) {
         const orderIdx = tokens.findIndex(t => t.toUpperCase() === 'ORDER');
-        if (orderIdx === -1 || tokens[orderIdx + 1]?.toUpperCase() !== 'BY') return data;
+        if (orderIdx === -1 || tokens[orderIdx + 1]?.toUpperCase() !== 'BY')
+            return data;
         const field = tokens[orderIdx + 2];
         const direction = tokens[orderIdx + 3]?.toUpperCase() === 'DESC' ? -1 : 1;
         return [...data].sort((a, b) => {
             const valA = field.includes('.') ? field.split('.').reduce((o, i) => o?.[i], a) : a[field];
             const valB = field.includes('.') ? field.split('.').reduce((o, i) => o?.[i], b) : b[field];
-            if (valA < valB) return -1 * direction;
-            if (valA > valB) return 1 * direction;
+            if (valA < valB)
+                return -1 * direction;
+            if (valA > valB)
+                return 1 * direction;
             return 0;
         });
     }
 }
+//# sourceMappingURL=SqlInterpreter.js.map

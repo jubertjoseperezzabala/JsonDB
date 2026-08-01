@@ -1,33 +1,29 @@
-import { IStorageEngine } from './IStorageEngine.js';
 import { FileEngine } from './FileEngine.js';
-
-export class JsonRepository<T extends object> {
-    private _backup: string | null = null;
-    private engine: IStorageEngine;
-    private dbName: string | null = null;
-    private indexes: Map<string, Map<any, any>> = new Map();
-    private dbData: T & { _relations?: any[] };
-    private queryCache: Map<string, any[]> = new Map();
-
-    constructor(engine?: IStorageEngine) {
+export class JsonRepository {
+    _backup = null;
+    engine;
+    dbName = null;
+    indexes = new Map();
+    dbData;
+    queryCache = new Map();
+    constructor(engine) {
         this.engine = engine || new FileEngine();
-        this.dbData = {} as any;
+        this.dbData = {};
     }
-
     /**
      * Inicia una transacción guardando una copia profunda del estado actual.
      */
-    public beginTransaction(): void {
+    beginTransaction() {
         this._backup = JSON.stringify(this.dbData);
     }
-
     /**
      * Revierte los cambios al estado guardado en el backup.
      */
-    public rollback(): string | void {
-        if (!this._backup) return "No hay transacción activa";
+    rollback() {
+        if (!this._backup)
+            return "No hay transacción activa";
         const restoredData = JSON.parse(this._backup);
-        const dataRef = this.dbData as Record<string, any>;
+        const dataRef = this.dbData;
         Object.keys(dataRef).forEach(key => {
             delete dataRef[key];
         });
@@ -37,172 +33,160 @@ export class JsonRepository<T extends object> {
     /**
      * Confirma la transacción.
      */
-    public commit(): void {
+    commit() {
         if (!this._backup) {
             throw new Error("No hay ninguna transacción activa.");
         }
         this._backup = null;
     }
-
     /**
      * Limpia el caché de consultas. Debe llamarse tras cualquier mutación (INSERT, UPDATE, DELETE).
      * @private
      */
-    private clearCache(): void {
+    clearCache() {
         this.queryCache.clear();
     }
-
     /**
      * Guarda un resultado en el caché.
      * @param {string} key - La consulta SQL.
      * @param {any} value - El resultado de la consulta.
      */
-    public addToCache(key: string, value: any): void {
+    addToCache(key, value) {
         this.queryCache.set(key, value);
     }
-
     /**
      * Obtiene un resultado del caché.
      * @param {string} key - La consulta SQL.
      * @returns {any | null}
      */
-    public getFromCache(key: string): any | null {
+    getFromCache(key) {
         return this.queryCache.get(key) || null;
     }
-
     /**
      * Configura el nombre de la base de datos y la inicializa.
      * @param {string} name - Nombre del archivo físico.
      * @param {boolean} [force=false] - Si es true, sobrescribe el archivo con un objeto vacío.
      */
-    public async createDataBase(name: string, force: boolean = false): Promise<void> {
+    async createDataBase(name, force = false) {
         this.dbName = name;
         if (force) {
-            await this.save({} as T);
-        } else {
+            await this.save({});
+        }
+        else {
             await this.load();
         }
     }
-
     /**
      * Carga los datos desde el archivo físico y los transforma en un objeto.
      * @returns {T} Los datos contenidos en el JSON con el tipo del esquema.
      * @private
      */
-    private async load(): Promise<T> {
+    async load() {
         if (!this.dbName) {
             throw new Error("Base de datos no inicializada.");
         }
-        const rawData: string = await this.engine.read(this.dbName);
-        this.dbData = JSON.parse(rawData) as any;
-        return this.dbData as unknown as T;
+        const rawData = await this.engine.read(this.dbName);
+        this.dbData = JSON.parse(rawData);
+        return this.dbData;
     }
-
     /**
      * Guarda los datos actuales en el archivo físico.
      * @param {T} data - Objeto completo de la base de datos a persistir.
      * @private
      */
-    private async save(data: T): Promise<void> {
-        if (!this.dbName) return;
+    async save(data) {
+        if (!this.dbName)
+            return;
         await this.engine.write(this.dbName, JSON.stringify(data, null, 2));
     }
-
     /**
      * Regenera el índice de una tabla específica para permitir búsquedas O(1).
      * @param {keyof T} table - Nombre de la tabla a indexar.
      * @private
      */
-    private refreshIndex(table: keyof T): void {
-        const records: any[] = this.findAll(table);
-        const indexMap: Map<any, any> = new Map();
-        
-        records.forEach((record: any) => {
+    refreshIndex(table) {
+        const records = this.findAll(table);
+        const indexMap = new Map();
+        records.forEach((record) => {
             if (record && record.id !== undefined) {
                 indexMap.set(record.id, record);
             }
         });
         this.indexes.set(String(table), indexMap);
     }
-
     /**
      * Crea una tabla (array) en el esquema si no existe.
      * @param {keyof T} table - Nombre de la tabla a crear.
      */
-    public async createTable(table: keyof T): Promise<void> {
-        const data: T = await this.load();
+    async createTable(table) {
+        const data = await this.load();
         if (data[table] === undefined) {
-            (data[table] as any) = [];
+            data[table] = [];
             await this.save(data);
             this.clearCache();
         }
         this.refreshIndex(table);
     }
-
     /**
      * Inserta un nuevo registro en la tabla especificada.
      * Si el ID no existe, lo genera automáticamente de forma incremental.
      * @param {keyof T} table - Tabla de destino.
      * @param {any} document - El objeto a insertar.
      */
-    public async insert(table: keyof T, document: any): Promise<void> {
+    async insert(table, document) {
         const data = await this.load();
         const tableName = String(table);
         const RELATIONS_TABLE = '_relations';
-        if (data[table] === undefined) { throw new Error(`SQL Engine Error: Tabla '${tableName}' no existe.`) }
-        const foreignKeys = (this.dbData[RELATIONS_TABLE] || []).filter((rel: any) => rel.childTable === tableName);
+        if (data[table] === undefined) {
+            throw new Error(`SQL Engine Error: Tabla '${tableName}' no existe.`);
+        }
+        const foreignKeys = (this.dbData[RELATIONS_TABLE] || []).filter((rel) => rel.childTable === tableName);
         for (const rel of foreignKeys) {
             const valueToVerify = document[rel.childField];
             if (valueToVerify !== undefined && valueToVerify !== null) {
-                const parentTable = rel.parentTable as keyof T;
-                const parentExists = (data[parentTable] as any[]).some((p: any) => p.id === valueToVerify);
+                const parentTable = rel.parentTable;
+                const parentExists = data[parentTable].some((p) => p.id === valueToVerify);
                 if (!parentExists) {
-                    throw new Error(
-                        `Integrity Error: No se puede insertar. El ID ${valueToVerify} ` +
-                        `no existe en la tabla de referencia '${rel.parentTable}'.`
-                    );
+                    throw new Error(`Integrity Error: No se puede insertar. El ID ${valueToVerify} ` +
+                        `no existe en la tabla de referencia '${rel.parentTable}'.`);
                 }
             }
         }
-        const records: any[] = data[table] as unknown as any[];
+        const records = data[table];
         if (document.id === undefined) {
-            const maxId = records.reduce((max: number, item: any) => 
-                (item && typeof item.id === 'number') ? Math.max(max, item.id) : max, 0);
+            const maxId = records.reduce((max, item) => (item && typeof item.id === 'number') ? Math.max(max, item.id) : max, 0);
             document.id = maxId + 1;
         }
         records.push(document);
-        await this.save(data); 
+        await this.save(data);
         this.refreshIndex(table);
         this.clearCache();
     }
-
     /**
      * Actualiza un registro existente validando integridad si se modifican llaves foráneas.
      * @param {keyof T} table - Tabla de destino.
      * @param {any} id - Identificador del registro.
      * @param {Partial<any>} val - Objeto con los campos a actualizar.
      */
-    public async update(table: keyof T, id: any, val: Partial<any>): Promise<void> {
-        const data: T = await this.load();
+    async update(table, id, val) {
+        const data = await this.load();
         const tableName = String(table);
         const RELATIONS_TABLE = '_relations';
-        const records: any[] = data[table] as unknown as any[];
-        const idx: number = records.findIndex((r: any) => r.id === id);
+        const records = data[table];
+        const idx = records.findIndex((r) => r.id === id);
         if (idx === -1) {
             throw new Error(`Update Error: Registro con ID ${id} no encontrado en '${tableName}'.`);
         }
-        const foreignKeys = (this.dbData[RELATIONS_TABLE] || []).filter((rel: any) => rel.childTable === tableName);
+        const foreignKeys = (this.dbData[RELATIONS_TABLE] || []).filter((rel) => rel.childTable === tableName);
         for (const rel of foreignKeys) {
             const newValue = val[rel.childField];
             if (newValue !== undefined && newValue !== null) {
-                const parentTable = rel.parentTable as keyof T;
-                const parentRecords = (data[parentTable] || []) as any[];
-                const parentExists = parentRecords.some((p: any) => p.id === newValue);
+                const parentTable = rel.parentTable;
+                const parentRecords = (data[parentTable] || []);
+                const parentExists = parentRecords.some((p) => p.id === newValue);
                 if (!parentExists) {
-                    throw new Error(
-                        `Integrity Error: No se puede actualizar '${tableName}'. ` +
-                        `El ID ${newValue} no existe en la tabla padre '${rel.parentTable}'.`
-                    );
+                    throw new Error(`Integrity Error: No se puede actualizar '${tableName}'. ` +
+                        `El ID ${newValue} no existe en la tabla padre '${rel.parentTable}'.`);
                 }
             }
         }
@@ -211,17 +195,15 @@ export class JsonRepository<T extends object> {
         this.refreshIndex(table);
         this.clearCache();
     }
-
     /**
      * Elimina un registro de la tabla según su ID.
      * @param {keyof T} table - Tabla de destino.
      * @param {any} id - Identificador del registro a eliminar.
      */
-    public async deleteRecord(table: keyof T, id: any): Promise<void> {
+    async deleteRecord(table, id) {
         const data = await this.load();
-        const records: any[] = data[table] as unknown as any[];
-        const idx: number = records.findIndex((r: any) => r.id === id);
-        
+        const records = data[table];
+        const idx = records.findIndex((r) => r.id === id);
         if (idx !== -1) {
             records.splice(idx, 1);
             await this.save(data);
@@ -229,48 +211,41 @@ export class JsonRepository<T extends object> {
             this.clearCache();
         }
     }
-
     /**
      * Recupera todos los registros de una tabla específica.
      * @param {keyof T} table - Nombre de la tabla.
      * @returns {any[]} Un array con todos los documentos de la tabla.
      */
-    public findAll(tableName: keyof T): any[] {
+    findAll(tableName) {
         // const data: T = this.load();
         // return (data[tableName] || []) as unknown as any[];
-        const table = (this.dbData as any)[tableName];
+        const table = this.dbData[tableName];
         return Array.isArray(table) ? table : [];
     }
-
     /**
      * Busca un único registro por su ID utilizando el índice en memoria.
      * @param {keyof T} table - Nombre de la tabla.
      * @param {any} id - Identificador a buscar.
      * @returns {any | null} El registro encontrado o null si no existe.
      */
-    public find(table: keyof T, id: any): any {
+    find(table, id) {
         if (!this.indexes.has(String(table))) {
             this.refreshIndex(table);
         }
         return this.indexes.get(String(table))?.get(id) || null;
     }
-
     /**
      * Realiza una unión relacional entre una tabla principal y otras secundarias.
      * @param {keyof T} mainTable - La tabla base para la unión.
      * @param {Array<{ table: keyof T, foreignKey: string, as?: string }>} joins - Configuración de las uniones.
      * @returns {any[]} Array de objetos con los datos relacionados incluidos.
      */
-    public innerJoin(
-        mainTable: keyof T,
-        joins: Array<{ table: keyof T, foreignKey: string, as?: string }>
-    ): any[] {
-        const mainData: any[] = this.findAll(mainTable);
-        
-        return mainData.map((record: any) => {
-            const joined: any = { ...record };
+    innerJoin(mainTable, joins) {
+        const mainData = this.findAll(mainTable);
+        return mainData.map((record) => {
+            const joined = { ...record };
             joins.forEach(j => {
-                const alias: string = j.as || String(j.table);
+                const alias = j.as || String(j.table);
                 if (!this.indexes.has(String(j.table))) {
                     this.refreshIndex(j.table);
                 }
@@ -279,62 +254,62 @@ export class JsonRepository<T extends object> {
             return joined;
         });
     }
-
     /**
      * Borra un registro y elimina todas sus referencias en otras tablas de forma automática.
      * @param {keyof T} table - Tabla principal.
      * @param {any} id - ID del registro a eliminar.
      */
-    public async deleteWithCascade(table: keyof T, id: any): Promise<void> {
-        const data = await this.load(); 
+    async deleteWithCascade(table, id) {
+        const data = await this.load();
         const tableName = String(table);
         const RELATIONS_TABLE = '_relations';
-        const relations = (this.dbData[RELATIONS_TABLE] || []).filter((rel: any) => rel.parentTable === tableName);
-        relations.forEach((rel: any) => {
-            const childTable = rel.childTable as keyof T;
+        const relations = (this.dbData[RELATIONS_TABLE] || []).filter((rel) => rel.parentTable === tableName);
+        relations.forEach((rel) => {
+            const childTable = rel.childTable;
             const childField = rel.childField;
             if (data[childTable] && Array.isArray(data[childTable])) {
-                const records = data[childTable] as any[];
-                (data[childTable] as any) = records.filter(child => child[childField] !== id);
+                const records = data[childTable];
+                data[childTable] = records.filter(child => child[childField] !== id);
                 this.refreshIndex(childTable);
             }
         });
         if (data[table] && Array.isArray(data[table])) {
-            const parentRecords = data[table] as any[];
-            (data[table] as any) = parentRecords.filter(p => p.id !== id);
+            const parentRecords = data[table];
+            data[table] = parentRecords.filter(p => p.id !== id);
         }
         await this.save(data);
         this.refreshIndex(table);
         this.clearCache();
     }
-
     /**
      * Retorna el nombre de la base de datos activa.
      * @returns {string | null}
      */
-    public getDbName(): string | null {
+    getDbName() {
         return this.dbName;
     }
     /**
      * Establece la base de datos activa para las operaciones del repositorio.
      * @param {string} dbName - Nombre del archivo de base de datos (sin extensión).
      */
-    public async useDatabase(dbName: string): Promise<boolean> {
+    async useDatabase(dbName) {
         if (await this.engine.exists(dbName)) {
             this.dbName = dbName;
             this.indexes.clear();
             return true;
-        } 
-        else { throw new Error(`La base de datos '${dbName}' no existe. Use CREATE DATABASE primero.`); }
+        }
+        else {
+            throw new Error(`La base de datos '${dbName}' no existe. Use CREATE DATABASE primero.`);
+        }
     }
     /**
      * Registra una relación de llave foránea en la tabla de metadatos.
      * @param {object} relation - Detalles de la conexión entre tablas.
      */
-    public async addRelation(relation: any): Promise<void> {
+    async addRelation(relation) {
         const RELATIONS_TABLE = '_relations';
-        if (!this.dbData) { 
-            this.dbData = {} as any; 
+        if (!this.dbData) {
+            this.dbData = {};
         }
         if (!this.dbData[RELATIONS_TABLE]) {
             this.dbData[RELATIONS_TABLE] = [];
@@ -349,7 +324,8 @@ export class JsonRepository<T extends object> {
      * Retorna los datos de dbData actual.
      * @private
      */
-    public getTable(tableName: string): any[] {
-        return (this.dbData as any)[tableName] || [];
+    getTable(tableName) {
+        return this.dbData[tableName] || [];
     }
 }
+//# sourceMappingURL=JsonRepository.js.map
