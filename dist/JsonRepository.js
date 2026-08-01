@@ -1,4 +1,20 @@
 import { FileEngine } from './FileEngine.js';
+/**
+ * Repositorio genérico para JsonDB.
+ *
+ * @groupname CRUD Operaciones CRUD
+ * @groupname Queries Consultas y joins
+ * @groupname Schema Definición de BD y tablas
+ * @groupname Transactions Transacciones
+ * @groupname Relations Relaciones FK
+ * @groupname Cache Caché de consultas
+ *
+ * Gestiona la persistencia de un esquema tipificado {@link T}
+ * sobre un {@link IStorageEngine}. Mantiene datos en memoria,
+ * índices por ID y caché de consultas SELECT.
+ *
+ * @template T - Esquema de la base de datos (tablas como propiedades).
+ */
 export class JsonRepository {
     _backup = null;
     engine;
@@ -6,18 +22,30 @@ export class JsonRepository {
     indexes = new Map();
     dbData;
     queryCache = new Map();
+    /**
+     * @param engine Motor de persistencia. Si se omite usa {@link FileEngine}.
+     */
     constructor(engine) {
         this.engine = engine || new FileEngine();
         this.dbData = {};
     }
     /**
      * Inicia una transacción guardando una copia profunda del estado actual.
+     * @group Transactions
+     * @example
+     * repo.beginTransaction();
+     * await repo.insert('users', { name: 'Test' });
+     * repo.rollback();
      */
     beginTransaction() {
         this._backup = JSON.stringify(this.dbData);
     }
     /**
      * Revierte los cambios al estado guardado en el backup.
+     * @group Transactions
+     * @returns Mensaje de estado o `undefined`.
+     * @example
+     * repo.rollback();
      */
     rollback() {
         if (!this._backup)
@@ -31,7 +59,11 @@ export class JsonRepository {
         this._backup = null;
     }
     /**
-     * Confirma la transacción.
+     * Confirma la transacción actual.
+     * @group Transactions
+     * @throws Si no hay transacción activa.
+     * @example
+     * repo.commit();
      */
     commit() {
         if (!this._backup) {
@@ -40,32 +72,35 @@ export class JsonRepository {
         this._backup = null;
     }
     /**
-     * Limpia el caché de consultas. Debe llamarse tras cualquier mutación (INSERT, UPDATE, DELETE).
+     * Limpia el caché de consultas. Debe llamarse tras cualquier mutación.
      * @private
      */
     clearCache() {
         this.queryCache.clear();
     }
     /**
-     * Guarda un resultado en el caché.
-     * @param {string} key - La consulta SQL.
-     * @param {any} value - El resultado de la consulta.
+     * Guarda un resultado en el caché de consultas.
+     * @group Cache
+     * @param key Consulta SQL usada como clave.
+     * @param value Resultado a cachear.
      */
     addToCache(key, value) {
         this.queryCache.set(key, value);
     }
     /**
      * Obtiene un resultado del caché.
-     * @param {string} key - La consulta SQL.
-     * @returns {any | null}
+     * @group Cache
+     * @param key Consulta SQL.
+     * @returns Resultado cacheado o `null`.
      */
     getFromCache(key) {
         return this.queryCache.get(key) || null;
     }
     /**
      * Configura el nombre de la base de datos y la inicializa.
-     * @param {string} name - Nombre del archivo físico.
-     * @param {boolean} [force=false] - Si es true, sobrescribe el archivo con un objeto vacío.
+     * @group Schema
+     * @param name Nombre del archivo físico (sin extensión).
+     * @param force Si es `true`, sobrescribe con un objeto vacío.
      */
     async createDataBase(name, force = false) {
         this.dbName = name;
@@ -77,8 +112,8 @@ export class JsonRepository {
         }
     }
     /**
-     * Carga los datos desde el archivo físico y los transforma en un objeto.
-     * @returns {T} Los datos contenidos en el JSON con el tipo del esquema.
+     * Carga los datos desde el archivo físico.
+     * @returns Datos parseados del JSON.
      * @private
      */
     async load() {
@@ -90,8 +125,8 @@ export class JsonRepository {
         return this.dbData;
     }
     /**
-     * Guarda los datos actuales en el archivo físico.
-     * @param {T} data - Objeto completo de la base de datos a persistir.
+     * Persiste los datos actuales en el archivo físico.
+     * @param data Objeto completo de la base de datos.
      * @private
      */
     async save(data) {
@@ -100,8 +135,8 @@ export class JsonRepository {
         await this.engine.write(this.dbName, JSON.stringify(data, null, 2));
     }
     /**
-     * Regenera el índice de una tabla específica para permitir búsquedas O(1).
-     * @param {keyof T} table - Nombre de la tabla a indexar.
+     * Regenera el índice de una tabla para búsquedas O(1) por ID.
+     * @param table Nombre de la tabla.
      * @private
      */
     refreshIndex(table) {
@@ -115,8 +150,9 @@ export class JsonRepository {
         this.indexes.set(String(table), indexMap);
     }
     /**
-     * Crea una tabla (array) en el esquema si no existe.
-     * @param {keyof T} table - Nombre de la tabla a crear.
+     * Crea una tabla (array vacío) si no existe.
+     * @group Schema
+     * @param table Nombre de la tabla.
      */
     async createTable(table) {
         const data = await this.load();
@@ -128,10 +164,15 @@ export class JsonRepository {
         this.refreshIndex(table);
     }
     /**
-     * Inserta un nuevo registro en la tabla especificada.
-     * Si el ID no existe, lo genera automáticamente de forma incremental.
-     * @param {keyof T} table - Tabla de destino.
-     * @param {any} document - El objeto a insertar.
+     * Inserta un nuevo registro con ID autoincremental.
+     * Valida integridad referencial si existen relaciones definidas.
+     *
+     * @group CRUD
+     * @param table Tabla de destino.
+     * @param document Documento a insertar.
+     * @throws Si la tabla no existe o falla una FK.
+     * @example
+     * await repo.insert('users', { name: 'Jubert', email: 'jubert@fluxer.io' });
      */
     async insert(table, document) {
         const data = await this.load();
@@ -163,10 +204,16 @@ export class JsonRepository {
         this.clearCache();
     }
     /**
-     * Actualiza un registro existente validando integridad si se modifican llaves foráneas.
-     * @param {keyof T} table - Tabla de destino.
-     * @param {any} id - Identificador del registro.
-     * @param {Partial<any>} val - Objeto con los campos a actualizar.
+     * Actualiza un registro existente.
+     * Valida integridad referencial si se modifican llaves foráneas.
+     *
+     * @group CRUD
+     * @param table Tabla de destino.
+     * @param id Identificador del registro.
+     * @param val Campos a actualizar.
+     * @throws Si el registro no existe o falla una FK.
+     * @example
+     * await repo.update('users', 1, { name: 'Jubert (Admin)' });
      */
     async update(table, id, val) {
         const data = await this.load();
@@ -196,9 +243,12 @@ export class JsonRepository {
         this.clearCache();
     }
     /**
-     * Elimina un registro de la tabla según su ID.
-     * @param {keyof T} table - Tabla de destino.
-     * @param {any} id - Identificador del registro a eliminar.
+     * Elimina un registro por su ID.
+     * @group CRUD
+     * @param table Tabla de destino.
+     * @param id Identificador del registro.
+     * @example
+     * await repo.deleteRecord('users', 3);
      */
     async deleteRecord(table, id) {
         const data = await this.load();
@@ -212,21 +262,25 @@ export class JsonRepository {
         }
     }
     /**
-     * Recupera todos los registros de una tabla específica.
-     * @param {keyof T} table - Nombre de la tabla.
-     * @returns {any[]} Un array con todos los documentos de la tabla.
+     * Recupera todos los registros de una tabla.
+     * @group Queries
+     * @param tableName Nombre de la tabla.
+     * @returns Array de documentos.
+     * @example
+     * const users = repo.findAll('users');
      */
     findAll(tableName) {
-        // const data: T = this.load();
-        // return (data[tableName] || []) as unknown as any[];
         const table = this.dbData[tableName];
         return Array.isArray(table) ? table : [];
     }
     /**
-     * Busca un único registro por su ID utilizando el índice en memoria.
-     * @param {keyof T} table - Nombre de la tabla.
-     * @param {any} id - Identificador a buscar.
-     * @returns {any | null} El registro encontrado o null si no existe.
+     * Busca un registro por ID usando el índice en memoria.
+     * @group Queries
+     * @param table Nombre de la tabla.
+     * @param id Identificador a buscar.
+     * @returns Registro encontrado o `null`.
+     * @example
+     * const user = repo.find('users', 1);
      */
     find(table, id) {
         if (!this.indexes.has(String(table))) {
@@ -235,10 +289,15 @@ export class JsonRepository {
         return this.indexes.get(String(table))?.get(id) || null;
     }
     /**
-     * Realiza una unión relacional entre una tabla principal y otras secundarias.
-     * @param {keyof T} mainTable - La tabla base para la unión.
-     * @param {Array<{ table: keyof T, foreignKey: string, as?: string }>} joins - Configuración de las uniones.
-     * @returns {any[]} Array de objetos con los datos relacionados incluidos.
+     * Une una tabla principal con secundarias usando índices en memoria.
+     *
+     * @param mainTable Tabla base.
+     * @param joins Configuración de uniones.
+     * @returns Array de objetos con datos relacionados.
+     * @example
+     * repo.innerJoin('orders', [
+     *   { table: 'users', foreignKey: 'userId', as: 'customer' }
+     * ]);
      */
     innerJoin(mainTable, joins) {
         const mainData = this.findAll(mainTable);
@@ -255,9 +314,12 @@ export class JsonRepository {
         });
     }
     /**
-     * Borra un registro y elimina todas sus referencias en otras tablas de forma automática.
-     * @param {keyof T} table - Tabla principal.
-     * @param {any} id - ID del registro a eliminar.
+     * Elimina un registro y limpia referencias en cascada.
+     * @group CRUD
+     * @param table Tabla principal.
+     * @param id ID del registro a eliminar.
+     * @example
+     * await repo.deleteWithCascade('users', 1);
      */
     async deleteWithCascade(table, id) {
         const data = await this.load();
@@ -282,15 +344,20 @@ export class JsonRepository {
         this.clearCache();
     }
     /**
-     * Retorna el nombre de la base de datos activa.
-     * @returns {string | null}
+     * Nombre de la base de datos activa.
+     * @group Schema
+     * @returns Nombre de la BD o `null`.
      */
     getDbName() {
         return this.dbName;
     }
     /**
-     * Establece la base de datos activa para las operaciones del repositorio.
-     * @param {string} dbName - Nombre del archivo de base de datos (sin extensión).
+     * Cambia la base de datos activa.
+     * @group Schema
+     * @param dbName Nombre del archivo de BD (sin extensión).
+     * @throws Si la BD no existe físicamente.
+     * @example
+     * await repo.useDatabase('SchoolSystem');
      */
     async useDatabase(dbName) {
         if (await this.engine.exists(dbName)) {
@@ -303,8 +370,17 @@ export class JsonRepository {
         }
     }
     /**
-     * Registra una relación de llave foránea en la tabla de metadatos.
-     * @param {object} relation - Detalles de la conexión entre tablas.
+     * Registra una relación de llave foránea.
+     * @group Relations
+     * @param relation Detalles de la conexión entre tablas.
+     * @example
+     * await repo.addRelation({
+     *   childTable: 'orders',
+     *   childField: 'userId',
+     *   parentTable: 'users',
+     *   parentField: 'id',
+     *   action: 'CASCADE'
+     * });
      */
     async addRelation(relation) {
         const RELATIONS_TABLE = '_relations';
@@ -321,8 +397,9 @@ export class JsonRepository {
         await this.save(this.dbData);
     }
     /**
-     * Retorna los datos de dbData actual.
-     * @private
+     * Acceso directo a una tabla en memoria.
+     * @param tableName Nombre de la tabla.
+     * @returns Array de documentos o vacío.
      */
     getTable(tableName) {
         return this.dbData[tableName] || [];

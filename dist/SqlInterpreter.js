@@ -1,22 +1,29 @@
 /**
- * Intérprete para soportar operaciones relacionales y consultas estándar mediante Pseudo-SQL.
- * @template T - El esquema de la base de datos que define las tablas disponibles.
+ * Intérprete de pseudo-SQL para JsonDB.
+ *
+ * @groupname DDL Definición de estructura
+ * @groupname DML Manipulación de datos
+ * @groupname Queries Consultas y joins
+ * @groupname Aggregations Funciones de agregación
+ *
+ * @template T - Esquema de la base de datos.
  */
 export class SqlInterpreter {
-    /** * @type {JsonRepository<T>} Instancia del repositorio para acceso a datos.
-     * @private
-     */
     repo;
-    /**
-     * @param {JsonRepository<T>} repository - Instancia del repositorio.
-     */
     constructor(repository) {
         this.repo = repository;
     }
     /**
-     * Ejecuta comandos SQL representados en un string y retorna los resultados.
-     * @param {string} query - Consulta en formato string a procesar.
-     * @returns {Promise<any>} El resultado de la operación (Array de objetos para SELECT, void para otros).
+     * Ejecuta un comando SQL en formato string.
+     *
+     * Los SELECT se cachean automáticamente.
+     *
+     * @group Queries
+     * @param query Consulta pseudo-SQL.
+     * @returns Resultado de la operación (array para SELECT, string para transacciones, `void` para otros).
+     * @throws Si la sintaxis es inválida o ocurre un error de integridad.
+     * @example
+     * const rows = await sql.execute("SELECT * FROM users WHERE id = 1");
      */
     async execute(query) {
         const tokens = query.trim().split(/\s+/);
@@ -79,6 +86,14 @@ export class SqlInterpreter {
             throw new Error(`SQL Engine Error: ${error.message}`);
         }
     }
+    /**
+     * Registra una foreign key en los metadatos.
+     * @group DDL
+     * @param query Consulta ALTER TABLE completa.
+     * @private
+     * @example
+     * await sql.execute("ALTER TABLE courses ADD CONSTRAINT fk_teacher FOREIGN KEY(teacherId) REFERENCES users(id)");
+     */
     async handleAlter(query) {
         const alterRegex = /ALTER\s+TABLE\s+(\w+)\s+ADD\s+CONSTRAINT\s+\w+\s+FOREIGN\s+KEY\s*\((.*?)\)\s+REFERENCES\s+(\w+)\s*\((.*?)\)/i;
         const match = query.match(alterRegex);
@@ -95,8 +110,11 @@ export class SqlInterpreter {
     }
     /**
      * Selecciona la base de datos activa.
-     * @param {string[]} tokens - Tokens de la consulta.
+     * @group DDL
+     * @param tokens Tokens de la consulta.
      * @private
+     * @example
+     * await sql.execute("USE SchoolSQL");
      */
     async handleUse(tokens) {
         const dbName = tokens[1];
@@ -105,9 +123,12 @@ export class SqlInterpreter {
         await this.repo.useDatabase(dbName);
     }
     /**
-     * Procesa el borrado o reseteo de la base de datos.
-     * @param {string[]} tokens - Tokens de la consulta.
+     * Resetea una base de datos (DROP DATABASE).
+     * @group DDL
+     * @param tokens Tokens de la consulta.
      * @private
+     * @example
+     * await sql.execute("DROP DATABASE SchoolSQL");
      */
     async handleDrop(tokens) {
         const target = tokens[1]?.toUpperCase();
@@ -120,9 +141,12 @@ export class SqlInterpreter {
         }
     }
     /**
-     * Procesa la eliminación de registros con soporte para cascada.
-     * @param {string[]} tokens - Tokens de la consulta.
+     * Eliminación de registros con soporte CASCADE.
+     * @group DML
+     * @param tokens Tokens de la consulta.
      * @private
+     * @example
+     * await sql.execute("DELETE FROM users WHERE id = 1 CASCADE");
      */
     async handleDelete(tokens) {
         const fromIndex = tokens.findIndex(t => t.toUpperCase() === 'FROM');
@@ -145,10 +169,13 @@ export class SqlInterpreter {
         }
     }
     /**
-     * Procesa la actualización de registros existentes.
-     * @param {string} query - Consulta original para extraer el JSON.
-     * @param {string[]} tokens - Tokens de la consulta.
+     * Actualización de registros con JSON en SET.
+     * @group DML
+     * @param query Consulta original.
+     * @param tokens Tokens de la consulta.
      * @private
+     * @example
+     * await sql.execute('UPDATE users SET {"role": "V.I.P"} WHERE id = 3');
      */
     async handleUpdate(query, tokens) {
         const whereIndex = tokens.findIndex(t => t.toUpperCase() === 'WHERE');
@@ -174,8 +201,11 @@ export class SqlInterpreter {
         await this.repo.update(tableName, idValue, updateData);
     }
     /**
-     * Gestiona la recuperación de datos (Agregaciones, Joins o Select simple).
+     * Enruta SELECT hacia agregaciones, JOIN o selección simple.
+     * @group Queries
      * @private
+     * @example
+     * await sql.execute("SELECT * FROM users WHERE id = 1");
      */
     async handleSelect(query, tokens) {
         const queryUpper = query.toUpperCase();
@@ -190,8 +220,11 @@ export class SqlInterpreter {
         return this.processSimpleSelect(query, tokens);
     }
     /**
-     * Procesa la función de agregación AVG.
+     * Calcula el promedio de una columna.
+     * @group Aggregations
      * @private
+     * @example
+     * await sql.execute("SELECT AVG(price) FROM products");
      */
     async processAvg(query, tokens) {
         const columnMatch = tokens[1].match(/\((.*?)\)/);
@@ -212,8 +245,11 @@ export class SqlInterpreter {
         return [{ "avg": total / data.length }];
     }
     /**
-     * Procesa la función de agregación SUM.
+     * Suma los valores de una columna.
+     * @group Aggregations
      * @private
+     * @example
+     * await sql.execute("SELECT SUM(id) FROM courses");
      */
     async processSum(query, tokens) {
         const columnMatch = tokens[1].match(/\((.*?)\)/);
@@ -232,8 +268,11 @@ export class SqlInterpreter {
         return [{ "sum": total }];
     }
     /**
-     * Procesa la función de agregación COUNT.
+     * Cuenta registros resultantes.
+     * @group Aggregations
      * @private
+     * @example
+     * await sql.execute("SELECT COUNT(*) FROM courses");
      */
     async processCount(query, tokens) {
         const virtualTokens = [...tokens];
@@ -244,8 +283,11 @@ export class SqlInterpreter {
         return [{ "count": data.length }];
     }
     /**
-     * Evalúa condiciones complejas incluyendo paréntesis, AND, OR y NOT.
+     * Evalúa condiciones complejas (`AND`, `OR`, `NOT`, paréntesis, `LIKE`).
+     * @group Queries
      * @private
+     * @example
+     * evaluateConditions(user, "role = 'Admin' AND id > 1");
      */
     evaluateConditions(item, conditionStr) {
         let str = conditionStr.trim();
@@ -295,10 +337,6 @@ export class SqlInterpreter {
             default: return false;
         }
     }
-    /**
-     * Divide una cadena por un conector (AND/OR) solo si está fuera de paréntesis.
-     * @private
-     */
     splitOutsideParentheses(str, separator) {
         const parts = [];
         let start = 0;
@@ -321,9 +359,11 @@ export class SqlInterpreter {
         return parts;
     }
     /**
-     * permite extraer, filtrar, ordenar y proyectar los datos almacenados en una tabla específica del repositorio. Su
-     * trabajo es transformar una sentencia SELECT en un conjunto de resultados filtrados y limpios.
+     * SELECT simple con WHERE, ORDER BY y proyección de columnas.
+     * @group Queries
      * @private
+     * @example
+     * await sql.execute("SELECT name, role FROM users WHERE id <= 2");
      */
     processSimpleSelect(query, tokens) {
         const fromIndex = tokens.findIndex(t => t.toUpperCase() === 'FROM');
@@ -354,8 +394,11 @@ export class SqlInterpreter {
         });
     }
     /**
-     * Ejecuta operaciones de unión INNER JOIN.
+     * INNER JOIN entre tabla principal y una secundaria.
+     * @group Queries
      * @private
+     * @example
+     * await sql.execute("SELECT title, teacher.name FROM courses INNER JOIN users ON teacherId AS teacher");
      */
     processJoin(query, tokens) {
         const fromIdx = tokens.findIndex(t => t.toUpperCase() === 'FROM');
@@ -389,8 +432,13 @@ export class SqlInterpreter {
         return result;
     }
     /**
-     * Procesa la creación de base de datos o tablas.
+     * CREATE DATABASE o CREATE TABLE.
+     * @group DDL
+     * @param tokens Tokens de la consulta.
      * @private
+     * @example
+     * await sql.execute("CREATE DATABASE SchoolSQL");
+     * await sql.execute("CREATE TABLE users");
      */
     async handleCreate(tokens) {
         const target = tokens[1]?.toUpperCase();
@@ -403,8 +451,12 @@ export class SqlInterpreter {
         }
     }
     /**
-     * Procesa la inserción de registros extrayendo el JSON del string original.
+     * INSERT INTO con JSON embebido en VALUES.
+     * @group DML
+     * @param query Consulta original.
      * @private
+     * @example
+     * await sql.execute('INSERT INTO users VALUES {"name": "Jubert", "role": "Admin"}');
      */
     async handleInsert(query) {
         const tableMatch = query.match(/INSERT\s+INTO\s+(\w+)/i);
@@ -421,8 +473,11 @@ export class SqlInterpreter {
         }
     }
     /**
-     * Aplica ordenamiento a los resultados.
+     * Aplica `ORDER BY <campo> [ASC|DESC]` a un array de resultados.
+     * @group Queries
      * @private
+     * @example
+     * await sql.execute("SELECT * FROM users ORDER BY name DESC");
      */
     applyOrderBy(data, tokens) {
         const orderIdx = tokens.findIndex(t => t.toUpperCase() === 'ORDER');

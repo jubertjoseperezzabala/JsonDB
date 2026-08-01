@@ -1,103 +1,158 @@
 import { JsonRepository } from './JsonRepository.js';
 /**
- * Intérprete para soportar operaciones relacionales y consultas estándar mediante Pseudo-SQL.
- * @template T - El esquema de la base de datos que define las tablas disponibles.
+ * Intérprete de pseudo-SQL para JsonDB.
+ *
+ * @groupname DDL Definición de estructura
+ * @groupname DML Manipulación de datos
+ * @groupname Queries Consultas y joins
+ * @groupname Aggregations Funciones de agregación
+ *
+ * @template T - Esquema de la base de datos.
  */
 export declare class SqlInterpreter<T extends object> {
-    /** * @type {JsonRepository<T>} Instancia del repositorio para acceso a datos.
-     * @private
-     */
     private repo;
-    /**
-     * @param {JsonRepository<T>} repository - Instancia del repositorio.
-     */
     constructor(repository: JsonRepository<T>);
     /**
-     * Ejecuta comandos SQL representados en un string y retorna los resultados.
-     * @param {string} query - Consulta en formato string a procesar.
-     * @returns {Promise<any>} El resultado de la operación (Array de objetos para SELECT, void para otros).
+     * Ejecuta un comando SQL en formato string.
+     *
+     * Los SELECT se cachean automáticamente.
+     *
+     * @group Queries
+     * @param query Consulta pseudo-SQL.
+     * @returns Resultado de la operación (array para SELECT, string para transacciones, `void` para otros).
+     * @throws Si la sintaxis es inválida o ocurre un error de integridad.
+     * @example
+     * const rows = await sql.execute("SELECT * FROM users WHERE id = 1");
      */
     execute(query: string): Promise<any>;
+    /**
+     * Registra una foreign key en los metadatos.
+     * @group DDL
+     * @param query Consulta ALTER TABLE completa.
+     * @private
+     * @example
+     * await sql.execute("ALTER TABLE courses ADD CONSTRAINT fk_teacher FOREIGN KEY(teacherId) REFERENCES users(id)");
+     */
     private handleAlter;
     /**
      * Selecciona la base de datos activa.
-     * @param {string[]} tokens - Tokens de la consulta.
+     * @group DDL
+     * @param tokens Tokens de la consulta.
      * @private
+     * @example
+     * await sql.execute("USE SchoolSQL");
      */
     private handleUse;
     /**
-     * Procesa el borrado o reseteo de la base de datos.
-     * @param {string[]} tokens - Tokens de la consulta.
+     * Resetea una base de datos (DROP DATABASE).
+     * @group DDL
+     * @param tokens Tokens de la consulta.
      * @private
+     * @example
+     * await sql.execute("DROP DATABASE SchoolSQL");
      */
     private handleDrop;
     /**
-     * Procesa la eliminación de registros con soporte para cascada.
-     * @param {string[]} tokens - Tokens de la consulta.
+     * Eliminación de registros con soporte CASCADE.
+     * @group DML
+     * @param tokens Tokens de la consulta.
      * @private
+     * @example
+     * await sql.execute("DELETE FROM users WHERE id = 1 CASCADE");
      */
     private handleDelete;
     /**
-     * Procesa la actualización de registros existentes.
-     * @param {string} query - Consulta original para extraer el JSON.
-     * @param {string[]} tokens - Tokens de la consulta.
+     * Actualización de registros con JSON en SET.
+     * @group DML
+     * @param query Consulta original.
+     * @param tokens Tokens de la consulta.
      * @private
+     * @example
+     * await sql.execute('UPDATE users SET {"role": "V.I.P"} WHERE id = 3');
      */
     private handleUpdate;
     /**
-     * Gestiona la recuperación de datos (Agregaciones, Joins o Select simple).
+     * Enruta SELECT hacia agregaciones, JOIN o selección simple.
+     * @group Queries
      * @private
+     * @example
+     * await sql.execute("SELECT * FROM users WHERE id = 1");
      */
     private handleSelect;
     /**
-     * Procesa la función de agregación AVG.
+     * Calcula el promedio de una columna.
+     * @group Aggregations
      * @private
+     * @example
+     * await sql.execute("SELECT AVG(price) FROM products");
      */
     private processAvg;
     /**
-     * Procesa la función de agregación SUM.
+     * Suma los valores de una columna.
+     * @group Aggregations
      * @private
+     * @example
+     * await sql.execute("SELECT SUM(id) FROM courses");
      */
     private processSum;
     /**
-     * Procesa la función de agregación COUNT.
+     * Cuenta registros resultantes.
+     * @group Aggregations
      * @private
+     * @example
+     * await sql.execute("SELECT COUNT(*) FROM courses");
      */
     private processCount;
     /**
-     * Evalúa condiciones complejas incluyendo paréntesis, AND, OR y NOT.
+     * Evalúa condiciones complejas (`AND`, `OR`, `NOT`, paréntesis, `LIKE`).
+     * @group Queries
      * @private
+     * @example
+     * evaluateConditions(user, "role = 'Admin' AND id > 1");
      */
     private evaluateConditions;
-    /**
-     * Divide una cadena por un conector (AND/OR) solo si está fuera de paréntesis.
-     * @private
-     */
     private splitOutsideParentheses;
     /**
-     * permite extraer, filtrar, ordenar y proyectar los datos almacenados en una tabla específica del repositorio. Su
-     * trabajo es transformar una sentencia SELECT en un conjunto de resultados filtrados y limpios.
+     * SELECT simple con WHERE, ORDER BY y proyección de columnas.
+     * @group Queries
      * @private
+     * @example
+     * await sql.execute("SELECT name, role FROM users WHERE id <= 2");
      */
     private processSimpleSelect;
     /**
-     * Ejecuta operaciones de unión INNER JOIN.
+     * INNER JOIN entre tabla principal y una secundaria.
+     * @group Queries
      * @private
+     * @example
+     * await sql.execute("SELECT title, teacher.name FROM courses INNER JOIN users ON teacherId AS teacher");
      */
     private processJoin;
     /**
-     * Procesa la creación de base de datos o tablas.
+     * CREATE DATABASE o CREATE TABLE.
+     * @group DDL
+     * @param tokens Tokens de la consulta.
      * @private
+     * @example
+     * await sql.execute("CREATE DATABASE SchoolSQL");
+     * await sql.execute("CREATE TABLE users");
      */
     private handleCreate;
     /**
-     * Procesa la inserción de registros extrayendo el JSON del string original.
+     * INSERT INTO con JSON embebido en VALUES.
+     * @group DML
+     * @param query Consulta original.
      * @private
+     * @example
+     * await sql.execute('INSERT INTO users VALUES {"name": "Jubert", "role": "Admin"}');
      */
     private handleInsert;
     /**
-     * Aplica ordenamiento a los resultados.
+     * Aplica `ORDER BY <campo> [ASC|DESC]` a un array de resultados.
+     * @group Queries
      * @private
+     * @example
+     * await sql.execute("SELECT * FROM users ORDER BY name DESC");
      */
     private applyOrderBy;
 }

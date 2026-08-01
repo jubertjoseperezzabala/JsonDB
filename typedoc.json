@@ -1,0 +1,13 @@
+{
+  "entryPoints": ["src"],
+  "entryPointStrategy": "expand",
+  "out": "docs",
+  "exclude": ["**/*+(test|spec).ts"],
+  "readme": "README.md",
+  "name": "JsonDB Fluxer",
+  "includeVersion": true,
+  "hideGenerator": true,
+  "categorizeByGroup": true,
+  "defaultCategory": "General",
+  "theme": "default"
+}
