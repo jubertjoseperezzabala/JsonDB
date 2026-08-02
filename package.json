@@ -17,7 +17,7 @@
     "dev": "node --loader ts-node/esm --no-warnings apps/examples/SqlTest.ts",
     "jsondb": "tsx apps/examples/SqlTest.ts",
     "build": "tsc",
-    "docs": "pnpm exec typedoc",
+    "docs": "pnpm exec typedoc && node scripts/create-manual.cjs",
     "docs:watch": "pnpm exec typedoc --watch"
   },
   "devDependencies": {

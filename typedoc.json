@@ -9,5 +9,8 @@
   "hideGenerator": true,
   "categorizeByGroup": true,
   "defaultCategory": "General",
-  "theme": "default"
+  "theme": "default",
+  "navigationLinks": {
+    "Manual de Programación": "manual.html"
+  }
 }
