@@ -75,3 +75,6 @@ JsonDB.ts: Actúa como la fachada (Facade) que centraliza el acceso.
 
 SchoolManager.ts: Representa la capa de componentes donde aplicas la lógica de negocio, 
 como validar correos duplicados antes de insertar.
+
+La documentacion completa puedes verla en:
+https://jubertjoseperezzabala.github.io/JsonDB/
