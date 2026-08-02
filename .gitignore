@@ -4,9 +4,6 @@ node_modules/
 # Build output
 dist/
 
-# Generated docs
-docs/
-
 # OS files
 .DS_Store
 Thumbs.db
