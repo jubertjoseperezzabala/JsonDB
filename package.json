@@ -1,6 +1,6 @@
 {
   "name": "jsondb-fluxer",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "type": "module",
   "main": "./dist/JsonDB.js",
   "types": "./dist/JsonDB.d.ts",
